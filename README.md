@@ -64,8 +64,8 @@
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/yourusername/ResumeAI.git
-cd ResumeAI
+git clone https://github.com/yourusername/Resume.git
+cd Resume
 ```
 
 ### 2. 配置文件
@@ -119,7 +119,7 @@ go run main.go
 ## 📁 项目结构
 
 ```
-ResumeAI/
+Resume/
 ├── main.go                     # 主程序入口
 ├── go.mod                      # Go模块文件
 ├── .env                        # 环境配置文件
@@ -306,25 +306,6 @@ ResumeAI/
 ### 3. 简历文件无法关联？
 - 确保简历文件已上传到系统
 - 检查简历是否已被其他面试记录使用
-
-## 🤝 贡献指南
-
-欢迎提交 Issue 和 Pull Request！
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
-## 📄 开源协议
-
-本项目采用 MIT 协议，详见 [LICENSE](LICENSE) 文件。
-
-## 📧 联系方式
-
-如有问题或建议，请通过 Issue 联系我们。
-
 ---
 
 **注意**：生产环境使用时，请确保：
