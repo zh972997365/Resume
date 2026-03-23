@@ -79,19 +79,21 @@ PORT=8080
 DEBUG=true
 
 # 存储配置
-STORAGE_PATH=./storage
-BASE_URL=http://localhost:8080
+STORAGE_PATH=../storage/data
+BASE_URL=http://0.0.0.0:8080
+
+# 文件限制
 MAX_FILE_SIZE=52428800  # 50MB
 
-# 数据库配置
+# 数据库配置 (MySQL)
 DB_DRIVER=mysql
-DB_HOST=localhost
+DB_HOST=192.168.222.170
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=yourpassword
-DB_NAME=resume_ai
+DB_PASSWORD=123456
+DB_NAME=Resume
 DB_CHARSET=utf8mb4
-DB_PARSE_TIME=True
+DB_PARSE_TIME=true
 DB_LOC=Local
 ```
 
