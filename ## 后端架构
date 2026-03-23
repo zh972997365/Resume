@@ -1,0 +1,1737 @@
+## 后端架构
+```
+Resume/
+├── .env
+└── backend/
+    ├── config/
+    │   └── config.go
+    ├── database/
+    │   └── database.go
+    ├── handlers/
+    │   ├── interview.go
+    │   └── upload.go
+    ├── middleware/
+    │   ├── cors.go
+    ├── models/
+    │   ├── company_position.go
+    │   ├── employee.go
+    │   ├── file.go
+    │   └── interview.go
+    ├── routers/
+    │   └── router.go
+    ├── services/
+    │   ├── interview_service.go
+    │   └── storage.go
+    └── main.go
+```
+
+### 1. `Resume/.env`
+
+```env
+HOST=127.0.0.1
+PORT=8080
+DEBUG=true
+
+STORAGE_PATH=./storage/data
+BASE_URL=http://localhost:8080
+
+MAX_FILE_SIZE=52428800
+
+DB_DRIVER=mysql
+DB_HOST=192.168.222.170
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=123456
+DB_NAME=Resume
+DB_CHARSET=utf8mb4
+DB_PARSE_TIME=true
+DB_LOC=Local
+```
+
+### 2. `Resume/backend/config/config.go`
+
+```go
+package config
+
+import (
+	"log"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
+
+	"github.com/joho/godotenv"
+)
+
+type Config struct {
+	Host        string
+	Port        string
+	Debug       bool
+	StoragePath string
+	MaxFileSize int64
+	BaseURL     string
+	DBDriver    string
+	DBHost      string
+	DBPort      string
+	DBUser      string
+	DBPassword  string
+	DBName      string
+	DBCharset   string
+	DBParseTime string
+	DBLoc       string
+}
+
+func LoadConfig() *Config {
+	envPath := findEnvFile()
+	if envPath == "" {
+		log.Fatal("错误: 未找到 .env 配置文件")
+	}
+
+	log.Printf("加载配置文件: %s", envPath)
+
+	if err := godotenv.Load(envPath); err != nil {
+		log.Fatalf("错误: 无法加载 .env 文件: %v", err)
+	}
+
+	config := validateAndParseConfig()
+
+	logConfig(config)
+
+	return config
+}
+
+func findEnvFile() string {
+	workDir, err := os.Getwd()
+	if err != nil {
+		log.Printf("警告: 无法获取工作目录: %v", err)
+		return ""
+	}
+
+	execDir := getExecutableDir()
+
+	possiblePaths := []string{
+		filepath.Join(workDir, ".env"),
+		filepath.Join(execDir, ".env"),
+		filepath.Join(workDir, "..", ".env"),
+		filepath.Join(execDir, "..", ".env"),
+		os.Getenv("ENV_FILE_PATH"),
+	}
+
+	for _, path := range possiblePaths {
+		if path == "" {
+			continue
+		}
+
+		cleanPath := filepath.Clean(path)
+
+		if info, err := os.Stat(cleanPath); err == nil && !info.IsDir() {
+			absPath, err := filepath.Abs(cleanPath)
+			if err == nil {
+				return absPath
+			}
+		}
+	}
+
+	return ""
+}
+
+func getExecutableDir() string {
+	_, filename, _, ok := runtime.Caller(0)
+	if ok {
+		return filepath.Dir(filename)
+	}
+
+	execPath, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return filepath.Dir(execPath)
+}
+
+func validateAndParseConfig() *Config {
+	requiredVars := map[string]string{
+		"HOST":         "",
+		"PORT":         "",
+		"STORAGE_PATH": "",
+		"BASE_URL":     "",
+		"DB_DRIVER":    "",
+		"DB_HOST":      "",
+		"DB_PORT":      "",
+		"DB_USER":      "",
+		"DB_PASSWORD":  "",
+		"DB_NAME":      "",
+	}
+
+	for key := range requiredVars {
+		value := os.Getenv(key)
+		if value == "" {
+			log.Fatalf("错误: 必需配置项 %s 未设置", key)
+		}
+		requiredVars[key] = value
+	}
+
+	storagePath := requiredVars["STORAGE_PATH"]
+	absStoragePath, err := filepath.Abs(storagePath)
+	if err != nil {
+		log.Fatalf("错误: 无法解析存储路径 '%s': %v", storagePath, err)
+	}
+
+	debug := parseBoolConfig("DEBUG", false)
+
+	maxFileSize := parseIntConfig("MAX_FILE_SIZE", 50*1024*1024)
+
+	return &Config{
+		Host:        requiredVars["HOST"],
+		Port:        requiredVars["PORT"],
+		Debug:       debug,
+		StoragePath: absStoragePath,
+		MaxFileSize: maxFileSize,
+		BaseURL:     requiredVars["BASE_URL"],
+		DBDriver:    requiredVars["DB_DRIVER"],
+		DBHost:      requiredVars["DB_HOST"],
+		DBPort:      requiredVars["DB_PORT"],
+		DBUser:      requiredVars["DB_USER"],
+		DBPassword:  requiredVars["DB_PASSWORD"],
+		DBName:      requiredVars["DB_NAME"],
+		DBCharset:   os.Getenv("DB_CHARSET"),
+		DBParseTime: os.Getenv("DB_PARSE_TIME"),
+		DBLoc:       os.Getenv("DB_LOC"),
+	}
+}
+
+func parseBoolConfig(key string, defaultValue bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	switch value {
+	case "true", "TRUE", "1", "yes", "YES", "on", "ON":
+		return true
+	case "false", "FALSE", "0", "no", "NO", "off", "OFF":
+		return false
+	default:
+		log.Printf("警告: 配置项 %s 的值 '%s' 无效，使用默认值 %v", key, value, defaultValue)
+		return defaultValue
+	}
+}
+
+func parseIntConfig(key string, defaultValue int64) int64 {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	intValue, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		log.Printf("警告: 配置项 %s 的值 '%s' 无效，使用默认值 %d", key, value, defaultValue)
+		return defaultValue
+	}
+
+	return intValue
+}
+
+func logConfig(config *Config) {
+	log.Printf("========== 配置信息 ==========")
+	log.Printf("服务器地址: %s:%s", config.Host, config.Port)
+	log.Printf("调试模式: %v", config.Debug)
+	log.Printf("存储路径: %s", config.StoragePath)
+	log.Printf("基础URL: %s", config.BaseURL)
+	log.Printf("最大文件大小: %d 字节 (%.2f MB)",
+		config.MaxFileSize,
+		float64(config.MaxFileSize)/(1024*1024))
+	log.Printf("数据库驱动: %s", config.DBDriver)
+	log.Printf("数据库地址: %s:%s", config.DBHost, config.DBPort)
+	log.Printf("数据库名称: %s", config.DBName)
+	log.Printf("数据库用户: %s", config.DBUser)
+	log.Printf("=============================")
+}
+```
+
+### 3. `Resume/backend/database/database.go`
+
+```go
+package database
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"time"
+
+	"Resume/backend/config"
+	"Resume/backend/models" // 确保这里引入了修改后的 models
+
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+var DB *gorm.DB
+
+func InitDB(cfg *config.Config) {
+	var err error
+
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=%s&loc=%s",
+		cfg.DBUser,
+		cfg.DBPassword,
+		cfg.DBHost,
+		cfg.DBPort,
+		cfg.DBName,
+		cfg.DBCharset,
+		cfg.DBParseTime,
+		cfg.DBLoc,
+	)
+
+	newLogger := logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold:             time.Second,
+			LogLevel:                  logger.Warn, // 在生产环境中可能设置为 Silent
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  true,
+		},
+	)
+
+	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
+		Logger: newLogger,
+	})
+
+	if err != nil {
+		log.Fatalf("连接数据库失败: %v", err)
+	}
+
+	sqlDB, err := DB.DB()
+	if err != nil {
+		log.Fatalf("获取通用数据库对象失败: %v", err)
+	}
+
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetConnMaxLifetime(time.Hour)
+
+	log.Println("数据库连接成功建立！")
+
+	autoMigrate(DB)
+}
+
+func autoMigrate(db *gorm.DB) {
+	// 迁移时，GORM将根据模型结构创建/修改表。
+	// 由于我们修改了模型，移除了gorm.DeletedAt，GORM将不再为这些表添加或管理deleted_at字段。
+	// 如果这些表之前已经存在deleted_at字段，你需要手动从数据库中删除它们。
+	err := db.AutoMigrate(
+		&models.FileInfo{},
+		&models.Interview{},
+		&models.CompanyPosition{}, // 确保这些模型也进行了相应调整
+		&models.Employee{},        // 确保这些模型也进行了相应调整
+	)
+	if err != nil {
+		log.Fatalf("数据库自动迁移失败: %v", err)
+	}
+	log.Println("数据库自动迁移完成。")
+}
+
+```
+
+### 4. `Resume/backend/handlers/interview.go`
+
+```go
+package handlers
+
+import (
+	"fmt"
+	"net/http"
+	"strconv"
+
+	"Resume/backend/models"
+	"Resume/backend/services"
+
+	"github.com/gin-gonic/gin"
+)
+
+type InterviewHandler struct {
+	interviewService *services.InterviewService
+	storageService   *services.StorageService
+}
+
+func NewInterviewHandler(interviewService *services.InterviewService, storageService *services.StorageService) *InterviewHandler {
+	return &InterviewHandler{
+		interviewService: interviewService,
+		storageService:   storageService,
+	}
+}
+
+func (h *InterviewHandler) CreateInterview(c *gin.Context) {
+	var req models.InterviewCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": fmt.Sprintf("无效的请求载荷: %s", err.Error())})
+		return
+	}
+
+	interview, err := h.interviewService.CreateInterview(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": fmt.Sprintf("创建面试记录失败: %s", err.Error())})
+		return
+	}
+
+	c.JSON(http.StatusCreated, models.InterviewSingleResponse{
+		BasicResponse: models.BasicResponse{
+			Success: true,
+			Message: "面试记录创建成功",
+		},
+		Interview: *interview,
+	})
+}
+
+func (h *InterviewHandler) GetInterview(c *gin.Context) {
+	id := c.Param("id")
+	interview, err := h.interviewService.GetInterviewByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": fmt.Sprintf("面试记录未找到: %s", err.Error())})
+		return
+	}
+	c.JSON(http.StatusOK, models.InterviewSingleResponse{
+		BasicResponse: models.BasicResponse{
+			Success: true,
+			Message: "面试记录获取成功",
+		},
+		Interview: *interview,
+	})
+}
+
+func (h *InterviewHandler) ListInterviews(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	sortBy := c.DefaultQuery("sortBy", "created_at")
+	order := c.DefaultQuery("order", "desc")
+	keyword := c.DefaultQuery("keyword", "")
+	suggestion := models.Suggestion(c.DefaultQuery("suggestion", ""))
+
+	interviews, total, err := h.interviewService.ListInterviews(page, limit, sortBy, order, keyword, suggestion)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": fmt.Sprintf("获取面试记录失败: %s", err.Error())})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.InterviewListResponse{
+		BasicResponse: models.BasicResponse{
+			Success: true,
+		},
+		Interviews: interviews,
+		Total:      total,
+		Page:       page,
+		Limit:      limit,
+	})
+}
+
+func (h *InterviewHandler) UpdateInterview(c *gin.Context) {
+	id := c.Param("id")
+	var req models.InterviewUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": fmt.Sprintf("无效的请求载荷: %s", err.Error())})
+		return
+	}
+
+	interview, err := h.interviewService.UpdateInterview(id, &req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": fmt.Sprintf("更新面试记录失败: %s", err.Error())})
+		return
+	}
+	c.JSON(http.StatusOK, models.InterviewSingleResponse{
+		BasicResponse: models.BasicResponse{
+			Success: true,
+			Message: "面试记录更新成功",
+		},
+		Interview: *interview,
+	})
+}
+
+func (h *InterviewHandler) DeleteInterview(c *gin.Context) {
+	id := c.Param("id")
+	err := h.interviewService.DeleteInterview(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": fmt.Sprintf("删除面试记录失败: %s", err.Error())})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "面试记录删除成功"})
+}
+
+func (h *InterviewHandler) UploadResumeForInterview(c *gin.Context) {
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.UploadResponse{
+			BasicResponse: models.BasicResponse{
+				Success: false,
+				Message: "文件上传失败: " + err.Error(),
+			},
+		})
+		return
+	}
+
+	fileInfo, err := h.storageService.Save(file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.UploadResponse{
+			BasicResponse: models.BasicResponse{
+				Success: false,
+				Message: "文件保存失败: " + err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.UploadResponse{
+		BasicResponse: models.BasicResponse{
+			Success: true,
+			Message: "简历文件上传成功",
+		},
+		File: fileInfo,
+	})
+}
+
+
+```
+
+### 5. `Resume/backend/handlers/upload.go`
+
+```go
+package handlers
+
+import (
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"Resume/backend/models"
+	"Resume/backend/services"
+
+	"github.com/gin-gonic/gin"
+)
+
+type UploadHandler struct {
+	storageService *services.StorageService
+}
+
+func NewUploadHandler(storageService *services.StorageService) *UploadHandler {
+	return &UploadHandler{
+		storageService: storageService,
+	}
+}
+
+func (h *UploadHandler) UploadSingle(c *gin.Context) {
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.UploadResponse{
+			BasicResponse: models.BasicResponse{
+				Success: false,
+				Message: "文件上传失败: " + err.Error(),
+			},
+		})
+		return
+	}
+
+	fileInfo, err := h.storageService.Save(file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.UploadResponse{
+			BasicResponse: models.BasicResponse{
+				Success: false,
+				Message: "文件保存失败: " + err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.UploadResponse{
+		BasicResponse: models.BasicResponse{
+			Success: true,
+			Message: "文件上传成功",
+		},
+		File: fileInfo,
+	})
+}
+
+func (h *UploadHandler) UploadBatch(c *gin.Context) {
+	form, _ := c.MultipartForm()
+	files := form.File["files"]
+
+	if len(files) == 0 {
+		c.JSON(http.StatusBadRequest, models.UploadResponse{
+			BasicResponse: models.BasicResponse{
+				Success: false,
+				Message: "没有选择文件上传",
+			},
+		})
+		return
+	}
+
+	savedFiles, errors := h.storageService.SaveBatch(files)
+
+	if len(errors) > 0 {
+		errorMessages := []string{}
+		for _, err := range errors {
+			errorMessages = append(errorMessages, err.Error())
+		}
+		c.JSON(http.StatusOK, models.UploadResponse{
+			BasicResponse: models.BasicResponse{
+				Success: false,
+				Message: "部分文件上传失败",
+			},
+			Files:  savedFiles,
+			Errors: errorMessages,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.UploadResponse{
+		BasicResponse: models.BasicResponse{
+			Success: true,
+			Message: fmt.Sprintf("成功上传 %d 个文件", len(savedFiles)),
+		},
+		Files: savedFiles,
+	})
+}
+
+func (h *UploadHandler) DeleteBatch(c *gin.Context) {
+	var req struct {
+		IDs []string `json:"ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": fmt.Sprintf("无效的请求载荷: %s", err.Error())})
+		return
+	}
+
+	deletedIDs, errors := h.storageService.DeleteBatch(req.IDs)
+
+	if len(errors) > 0 {
+		errorMessages := []string{}
+		for _, err := range errors {
+			errorMessages = append(errorMessages, err.Error())
+		}
+		c.JSON(http.StatusMultiStatus, gin.H{
+			"success":     false,
+			"message":     "部分文件删除失败",
+			"deleted_ids": deletedIDs,
+			"errors":      errorMessages,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":     true,
+		"message":     fmt.Sprintf("成功删除 %d 个文件", len(deletedIDs)),
+		"deleted_ids": deletedIDs,
+	})
+}
+
+func (h *UploadHandler) ListFiles(c *gin.Context) {
+	fileType := c.DefaultQuery("type", "all")
+	keyword := c.DefaultQuery("keyword", "")
+	sortBy := c.DefaultQuery("sortBy", "created_at")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	files, total, err := h.storageService.ListFiles(fileType, keyword, sortBy, page, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.FileListResponse{
+			BasicResponse: models.BasicResponse{
+				Success: false,
+				Message: "获取文件列表失败: " + err.Error(),
+			},
+		})
+		return
+	}
+	c.JSON(http.StatusOK, models.FileListResponse{
+		BasicResponse: models.BasicResponse{
+			Success: true,
+			Message: "文件列表获取成功",
+		},
+		Files: files,
+		Total: total,
+		Page:  page,
+		Limit: limit,
+	})
+}
+
+func (h *UploadHandler) GetFile(c *gin.Context) {
+	id := c.Param("id")
+	fileInfo, err := h.storageService.GetFile(id)
+	if err != nil {
+		status := http.StatusNotFound
+		if strings.Contains(err.Error(), "从数据库获取文件失败") {
+			status = http.StatusInternalServerError
+		}
+		c.JSON(status, models.UploadResponse{
+			BasicResponse: models.BasicResponse{
+				Success: false,
+				Message: "文件获取失败: " + err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.UploadResponse{
+		BasicResponse: models.BasicResponse{
+			Success: true,
+			Message: "文件获取成功",
+		},
+		File: fileInfo,
+	})
+}
+
+func (h *UploadHandler) DeleteFile(c *gin.Context) {
+	id := c.Param("id")
+	err := h.storageService.DeleteFile(id)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "文件未找到") {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"success": false, "message": "文件删除失败: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "文件删除成功"})
+}
+
+func (h *UploadHandler) DownloadFile(c *gin.Context) {
+	id := c.Param("id")
+	fileInfo, err := h.storageService.GetFile(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "文件未找到或已删除: " + err.Error()})
+		return
+	}
+
+	filePath := h.storageService.GetFilePath(fileInfo)
+	c.FileAttachment(filePath, fileInfo.OriginalName)
+}
+
+func (h *UploadHandler) SearchFiles(c *gin.Context) {
+	keyword := c.DefaultQuery("q", "")
+	fileType := c.DefaultQuery("type", "all")
+
+	files, _, err := h.storageService.ListFiles(fileType, keyword, "", 1, 99999)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.FileSearchResponse{
+			BasicResponse: models.BasicResponse{
+				Success: false,
+				Message: "搜索文件失败: " + err.Error(),
+			},
+		})
+		return
+	}
+	c.JSON(http.StatusOK, models.FileSearchResponse{
+		BasicResponse: models.BasicResponse{
+			Success: true,
+			Message: "文件搜索成功",
+		},
+		Files: files,
+	})
+}
+
+func (h *UploadHandler) GetStats(c *gin.Context) {
+	totalCount, err := h.storageService.GetTotalFileCount()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取文件总数失败: " + err.Error()})
+		return
+	}
+
+	totalSize, err := h.storageService.GetTotalFileSize()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "获取文件总大小失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":     true,
+		"total_files": totalCount,
+		"total_size":  totalSize,
+	})
+}
+
+func (h *UploadHandler) RescanFiles(c *gin.Context) {
+	err := h.storageService.RescanFiles()
+	if err != nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "文件重新扫描成功"})
+}
+
+```
+
+### 6. `Resume/backend/main.go`
+
+```go
+package main
+
+import (
+	"log"
+	"os"
+	"time"
+
+	"Resume/backend/config"
+	"Resume/backend/database"
+	"Resume/backend/middleware"
+	"Resume/backend/routers"
+
+	"github.com/gin-gonic/gin"
+)
+
+func main() {
+	cfg := config.LoadConfig()
+
+	if err := os.MkdirAll(cfg.StoragePath, 0755); err != nil {
+		log.Fatalf("创建存储目录失败: %v", err)
+	}
+
+	log.Printf("配置文件加载成功:")
+	log.Printf("  服务器地址: %s:%s", cfg.Host, cfg.Port)
+	log.Printf("  存储路径: %s", cfg.StoragePath)
+	log.Printf("  基础URL: %s", cfg.BaseURL)
+	log.Printf("  调试模式: %v", cfg.Debug)
+
+	database.InitDB(cfg)
+
+	if cfg.Debug {
+		gin.SetMode(gin.DebugMode)
+		gin.ForceConsoleColor()
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	r := gin.Default()
+
+	r.Use(middleware.CORS())
+
+	r.Static("/static", "./frontend/static")
+	r.LoadHTMLGlob("./frontend/templates/*")
+
+	routers.SetupRoutes(r, cfg)
+
+	r.GET("/", func(c *gin.Context) {
+		c.HTML(200, "index.html", gin.H{
+			"title": "简历上传系统",
+		})
+	})
+
+	r.GET("/index.html", func(c *gin.Context) {
+		c.HTML(200, "index.html", gin.H{
+			"title": "简历上传系统",
+		})
+	})
+
+	r.GET("/interview-form.html", func(c *gin.Context) {
+		c.HTML(200, "interview-form.html", gin.H{
+			"title": "面试管理表单",
+		})
+	})
+
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status":       "ok",
+			"service":      "简历上传系统",
+			"version":      "1.0.0",
+			"storage_path": cfg.StoragePath,
+			"debug":        cfg.Debug,
+		})
+	})
+
+	r.GET("/api/status", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"success":   true,
+			"message":   "API服务正常运行",
+			"timestamp": time.Now().Unix(),
+		})
+	})
+
+	log.Printf("🚀 服务器启动在 http://%s:%s", cfg.Host, cfg.Port)
+	log.Printf("📁 文件存储目录: %s", cfg.StoragePath)
+	log.Printf("📊 前端页面地址: http://%s:%s/", cfg.Host, cfg.Port)
+
+	if err := r.Run(cfg.Host + ":" + cfg.Port); err != nil {
+		log.Fatal("服务器启动失败:", err)
+	}
+}
+```
+
+### 7. `Resume/backend/middleware/cors.go`
+
+```go
+package middleware
+
+import "github.com/gin-gonic/gin"
+
+func CORS() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	}
+}
+```
+
+### 8. `Resume/backend/models/company_position.go`
+
+```go
+package models
+
+import (
+	"time"
+)
+
+type CompanyPosition struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	Name string `gorm:"type:varchar(100);not null;unique" json:"name"`
+}
+
+```
+
+### 9. `Resume/backend/models/employee.go`
+
+```go
+package models
+
+import (
+	"time"
+)
+
+type Employee struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	Name       string `gorm:"type:varchar(50);not null" json:"name"`
+	Email      string `gorm:"type:varchar(100);unique" json:"email"`
+	Department string `gorm:"type:varchar(50)" json:"department"`
+}
+
+```
+
+### 10. `Resume/backend/models/file.go`
+
+```go
+package models
+
+import (
+	"encoding/json"
+	"time"
+)
+
+type FileInfo struct {
+	ID           string    `json:"id" gorm:"type:varchar(36);primaryKey"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	OriginalName string    `json:"original_name"`
+	StorageName  string    `json:"storage_name"`
+	StoragePath  string    `json:"storage_path"`
+	Size         int64     `json:"size"`
+	MimeType     string    `json:"mime_type"`
+	Extension    string    `json:"extension"`
+	Hash         string    `json:"hash,omitempty"`
+	URL          string    `json:"url"`
+}
+
+func (f *FileInfo) MarshalJSON() ([]byte, error) {
+	type Alias FileInfo
+	return json.Marshal(&struct {
+		CreatedAt string `json:"created_at"`
+		*Alias
+	}{
+		CreatedAt: f.CreatedAt.Format(time.RFC3339),
+		Alias:     (*Alias)(f),
+	})
+}
+
+func (f *FileInfo) UnmarshalJSON(data []byte) error {
+	type Alias FileInfo
+	aux := &struct {
+		CreatedAt string `json:"created_at"`
+		*Alias
+	}{
+		Alias: (*Alias)(f),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	if aux.CreatedAt != "" {
+		parsedTime, err := time.Parse(time.RFC3339, aux.CreatedAt)
+		if err != nil {
+			parsedTime, err = time.Parse("2006-01-02T15:04:05", aux.CreatedAt)
+			if err != nil {
+				f.CreatedAt = time.Now()
+			}
+		}
+		f.CreatedAt = parsedTime
+	} else {
+		f.CreatedAt = time.Now()
+	}
+
+	return nil
+}
+
+```
+
+### 11. `Resume/backend/models/interview.go`
+
+```go
+package models
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+type InterviewRound string
+
+const (
+	InterviewRoundInitial     InterviewRound = "初试"
+	InterviewRoundReinterview InterviewRound = "复试"
+	InterviewRoundFinal       InterviewRound = "终面"
+)
+
+type InterviewMethod string
+
+const (
+	InterviewMethodOnsite InterviewMethod = "现场面试"
+	InterviewMethodPhone  InterviewMethod = "电话面试"
+	InterviewMethodVideo  InterviewMethod = "视频面试"
+)
+
+type Suggestion string
+
+const (
+	SuggestionPassed   Suggestion = "通过"
+	SuggestionPending  Suggestion = "待定"
+	SuggestionRejected Suggestion = "淘汰"
+)
+
+type Interview struct {
+	ID        string    `gorm:"type:varchar(36);primaryKey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	CandidateName   string `gorm:"type:varchar(100);not null" json:"candidate_name"`
+	PhoneNumber     string `gorm:"type:varchar(20);not null" json:"phone_number"`
+	Email           string `gorm:"type:varchar(100);not null" json:"email"`
+	AppliedPosition string `gorm:"type:varchar(100);not null" json:"applied_position"`
+
+	ResumeFileID string    `gorm:"type:varchar(36);uniqueIndex" json:"resume_file_id"`
+	ResumeFile   *FileInfo `gorm:"foreignkey:ResumeFileID" json:"resume_file,omitempty"`
+
+	Source string `gorm:"type:varchar(100);not null" json:"source"`
+
+	InterviewRound  InterviewRound  `gorm:"type:varchar(20);not null" json:"interview_round"`
+	InterviewMethod InterviewMethod `gorm:"type:varchar(20);not null" json:"interview_method"`
+	InterviewTime   time.Time       `gorm:"type:datetime;not null" json:"interview_time"`
+	InterviewerName string          `gorm:"type:varchar(100);not null" json:"interviewer_name"`
+
+	InterviewRating int        `gorm:"type:int;default:0" json:"interview_rating"`
+	Comments        string     `gorm:"type:text" json:"comments,omitempty"`
+	Suggestion      Suggestion `gorm:"type:varchar(20);not null" json:"suggestion"`
+}
+
+func (i *Interview) BeforeCreate(tx *gorm.DB) (err error) {
+	if i.ID == "" {
+		i.ID = uuid.New().String()
+	}
+	return
+}
+
+type InterviewCreateRequest struct {
+	CandidateName   string          `json:"candidate_name" binding:"required"`
+	PhoneNumber     string          `json:"phone_number" binding:"required"`
+	Email           string          `json:"email" binding:"required"`
+	AppliedPosition string          `json:"applied_position" binding:"required"`
+	ResumeFileID    string          `json:"resume_file_id" binding:"required"`
+	Source          string          `json:"source" binding:"required"`
+	InterviewRound  InterviewRound  `json:"interview_round" binding:"required"`
+	InterviewMethod InterviewMethod `json:"interview_method" binding:"required"`
+	InterviewTime   time.Time       `json:"interview_time" binding:"required"`
+	InterviewerName string          `json:"interviewer_name" binding:"required"`
+	InterviewRating int             `json:"interview_rating"`
+	Comments        string          `json:"comments"`
+	Suggestion      Suggestion      `json:"suggestion" binding:"required"`
+}
+
+type InterviewUpdateRequest struct {
+	CandidateName   *string          `json:"candidate_name"`
+	PhoneNumber     *string          `json:"phone_number"`
+	Email           *string          `json:"email"`
+	AppliedPosition *string          `json:"applied_position"`
+	ResumeFileID    *string          `json:"resume_file_id"`
+	Source          *string          `json:"source"`
+	InterviewRound  *InterviewRound  `json:"interview_round"`
+	InterviewMethod *InterviewMethod `json:"interview_method"`
+	InterviewTime   *time.Time       `json:"interview_time"`
+	InterviewerName *string          `json:"interviewer_name"`
+	InterviewRating *int             `json:"interview_rating"`
+	Comments        *string          `json:"comments"`
+	Suggestion      *Suggestion      `json:"suggestion"`
+}
+
+```
+
+### 12. `Resume/backend/models/responses.go`
+
+```go
+package models
+
+type BasicResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type UploadResponse struct {
+	BasicResponse
+	File   *FileInfo   `json:"file,omitempty"`
+	Files  []*FileInfo `json:"files,omitempty"`
+	Errors []string    `json:"errors,omitempty"`
+}
+
+type FileListResponse struct {
+	BasicResponse
+	Files []*FileInfo `json:"files"`
+	Total int64       `json:"total"`
+	Page  int         `json:"page"`
+	Limit int         `json:"limit"`
+}
+
+type FileSearchResponse struct {
+	BasicResponse
+	Files []*FileInfo `json:"files"`
+}
+
+type InterviewListResponse struct {
+	BasicResponse
+	Interviews []Interview `json:"interviews"`
+	Total      int64       `json:"total"`
+	Page       int         `json:"page"`
+	Limit      int         `json:"limit"`
+}
+
+type InterviewSingleResponse struct {
+	BasicResponse
+	Interview Interview `json:"interview"`
+}
+
+```
+
+### 13. `Resume/backend/routers/router.go`
+
+```go
+package routers
+
+import (
+	"log"
+
+	"Resume/backend/config"
+	"Resume/backend/handlers"
+	"Resume/backend/services"
+
+	"github.com/gin-gonic/gin"
+)
+
+func SetupRoutes(r *gin.Engine, cfg *config.Config) {
+	storageService, err := services.NewStorageService(cfg.StoragePath, cfg.BaseURL, cfg.MaxFileSize)
+	if err != nil {
+		log.Fatalf("初始化存储服务失败: %v", err)
+	}
+
+	interviewService := services.NewInterviewService()
+
+	uploadHandler := handlers.NewUploadHandler(storageService)
+	interviewHandler := handlers.NewInterviewHandler(interviewService, storageService)
+
+	api := r.Group("/api/v1")
+	{
+		api.POST("/upload", uploadHandler.UploadSingle)
+		api.POST("/upload/batch", uploadHandler.UploadBatch)
+		api.DELETE("/files/batch", uploadHandler.DeleteBatch)
+		api.GET("/files", uploadHandler.ListFiles)
+		api.GET("/files/:id", uploadHandler.GetFile)
+		api.DELETE("/files/:id", uploadHandler.DeleteFile)
+		api.GET("/files/search", uploadHandler.SearchFiles)
+		api.GET("/files/:id/download", uploadHandler.DownloadFile)
+		api.GET("/stats", uploadHandler.GetStats)
+		api.POST("/rescan", uploadHandler.RescanFiles)
+
+		interviewRoutes := api.Group("/interviews")
+		{
+			interviewRoutes.POST("", interviewHandler.CreateInterview)
+			interviewRoutes.GET("", interviewHandler.ListInterviews)
+			interviewRoutes.GET("/:id", interviewHandler.GetInterview)
+			interviewRoutes.PUT("/:id", interviewHandler.UpdateInterview)
+			interviewRoutes.DELETE("/:id", interviewHandler.DeleteInterview)
+			interviewRoutes.POST("/upload-resume", interviewHandler.UploadResumeForInterview)
+		}
+	}
+
+	r.Static("/uploads", cfg.StoragePath)
+
+	r.NoRoute(func(c *gin.Context) {
+		if c.Request.URL.Path == "/interview-form.html" {
+			c.HTML(200, "interview-form.html", nil)
+			return
+		}
+
+		c.JSON(404, gin.H{
+			"success": false,
+			"message": "API端点未找到或页面不存在",
+		})
+	})
+}
+
+```
+
+### 14. `Resume/backend/services/interview_service.go` 
+
+```go
+package services
+
+import (
+	"Resume/backend/database"
+	"Resume/backend/models"
+	"fmt"
+
+	"gorm.io/gorm"
+)
+
+type InterviewService struct {
+	db *gorm.DB
+}
+
+func NewInterviewService() *InterviewService {
+	return &InterviewService{
+		db: database.DB,
+	}
+}
+
+func (s *InterviewService) CreateInterview(req *models.InterviewCreateRequest) (*models.Interview, error) {
+	interview := models.Interview{
+		CandidateName:   req.CandidateName,
+		PhoneNumber:     req.PhoneNumber,
+		Email:           req.Email,
+		AppliedPosition: req.AppliedPosition,
+		ResumeFileID:    req.ResumeFileID,
+		Source:          req.Source,
+		InterviewRound:  req.InterviewRound,
+		InterviewMethod: req.InterviewMethod,
+		InterviewTime:   req.InterviewTime,
+		InterviewerName: req.InterviewerName,
+		InterviewRating: req.InterviewRating,
+		Comments:        req.Comments,
+		Suggestion:      req.Suggestion,
+	}
+
+	result := s.db.Create(&interview)
+	if result.Error != nil {
+		return nil, fmt.Errorf("创建面试记录失败: %w", result.Error)
+	}
+
+	// 使用 First 确保加载关联的 ResumeFile 以及所有最新字段
+	var createdInterview models.Interview
+	s.db.Preload("ResumeFile").First(&createdInterview, "id = ?", interview.ID)
+
+	return &createdInterview, nil
+}
+
+func (s *InterviewService) GetInterviewByID(id string) (*models.Interview, error) {
+	var interview models.Interview
+	// 由于移除了软删除，不需要 Unscoped
+	err := s.db.Preload("ResumeFile").First(&interview, "id = ?", id).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("ID为 '%s' 的面试记录未找到", id)
+		}
+		return nil, fmt.Errorf("根据ID '%s' 获取面试记录失败: %w", id, err)
+	}
+	return &interview, nil
+}
+
+func (s *InterviewService) ListInterviews(page, limit int, sortBy, order, keyword string, suggestion models.Suggestion) ([]models.Interview, int64, error) {
+	var interviews []models.Interview
+	var total int64
+
+	query := s.db.Model(&models.Interview{})
+	// 由于移除了软删除，不需要 Unscoped
+
+	if keyword != "" {
+		keyword = "%" + keyword + "%"
+		query = query.Where(
+			"candidate_name LIKE ? OR applied_position LIKE ? OR interviewer_name LIKE ? OR source LIKE ?",
+			keyword, keyword, keyword, keyword,
+		)
+	}
+
+	if suggestion != "" {
+		query = query.Where("suggestion = ?", suggestion)
+	}
+
+	query.Count(&total)
+
+	if sortBy == "" {
+		sortBy = "created_at"
+	}
+	if order == "" {
+		order = "desc"
+	}
+	query = query.Order(fmt.Sprintf("%s %s", sortBy, order))
+
+	offset := (page - 1) * limit
+	err := query.Offset(offset).Limit(limit).Preload("ResumeFile").Find(&interviews).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("获取面试记录列表失败: %w", err)
+	}
+
+	return interviews, total, nil
+}
+
+func (s *InterviewService) UpdateInterview(id string, req *models.InterviewUpdateRequest) (*models.Interview, error) {
+	var interview models.Interview
+	err := s.db.First(&interview, "id = ?", id).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("ID为 '%s' 的面试记录未找到，无法更新", id)
+		}
+		return nil, fmt.Errorf("查找面试记录失败，无法更新: %w", err)
+	}
+
+	// 使用 map 或结构体更新以避免零值问题，但你的现有逻辑通过指针判断也有效
+	updates := make(map[string]interface{})
+	if req.CandidateName != nil {
+		updates["candidate_name"] = *req.CandidateName
+	}
+	if req.PhoneNumber != nil {
+		updates["phone_number"] = *req.PhoneNumber
+	}
+	if req.Email != nil {
+		updates["email"] = *req.Email
+	}
+	if req.AppliedPosition != nil {
+		updates["applied_position"] = *req.AppliedPosition
+	}
+	if req.ResumeFileID != nil {
+		updates["resume_file_id"] = *req.ResumeFileID
+	}
+	if req.Source != nil {
+		updates["source"] = *req.Source
+	}
+	if req.InterviewRound != nil {
+		updates["interview_round"] = *req.InterviewRound
+	}
+	if req.InterviewMethod != nil {
+		updates["interview_method"] = *req.InterviewMethod
+	}
+	if req.InterviewTime != nil {
+		updates["interview_time"] = *req.InterviewTime
+	}
+	if req.InterviewerName != nil {
+		updates["interviewer_name"] = *req.InterviewerName
+	}
+	if req.InterviewRating != nil {
+		updates["interview_rating"] = *req.InterviewRating
+	}
+	if req.Comments != nil {
+		updates["comments"] = *req.Comments
+	}
+	if req.Suggestion != nil {
+		updates["suggestion"] = *req.Suggestion
+	}
+
+	// 执行更新
+	result := s.db.Model(&interview).Where("id = ?", id).Updates(updates)
+	if result.Error != nil {
+		return nil, fmt.Errorf("更新面试记录失败: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return nil, fmt.Errorf("ID为 '%s' 的面试记录未找到或没有更改", id)
+	}
+
+	// 重新加载更新后的面试记录，包括关联的 ResumeFile
+	s.db.Preload("ResumeFile").First(&interview, "id = ?", id)
+
+	return &interview, nil
+}
+
+func (s *InterviewService) DeleteInterview(id string) error {
+	// 直接使用 Where 条件进行物理删除
+	result := s.db.Where("id = ?", id).Delete(&models.Interview{})
+	if result.Error != nil {
+		return fmt.Errorf("删除面试记录失败: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("ID为 '%s' 的面试记录未找到，无法删除", id)
+	}
+	return nil
+}
+
+```
+
+### 15. `Resume/backend/services/storage.go`
+
+```go
+package services
+
+import (
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"Resume/backend/database"
+	"Resume/backend/models"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+type StorageService struct {
+	basePath     string
+	baseURL      string
+	maxFileSize  int64
+	allowedTypes []string
+	db           *gorm.DB
+}
+
+func NewStorageService(basePath, baseURL string, maxFileSize int64) (*StorageService, error) {
+	absPath, err := filepath.Abs(basePath)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.MkdirAll(absPath, 0755); err != nil {
+		return nil, fmt.Errorf("创建存储目录失败: %v", err)
+	}
+
+	fmt.Printf("存储服务已初始化. 基础路径: %s, 基础URL: %s\n", absPath, baseURL)
+
+	return &StorageService{
+		basePath:    absPath,
+		baseURL:     baseURL,
+		maxFileSize: maxFileSize,
+		allowedTypes: []string{
+			"application/pdf",
+			"application/msword",
+			"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		},
+		db: database.DB,
+	}, nil
+}
+
+func (s *StorageService) Save(file *multipart.FileHeader) (*models.FileInfo, error) {
+	if err := s.validateFile(file); err != nil {
+		return nil, err
+	}
+
+	fileInfo := s.createFileInfo(file)
+	destPath := filepath.Join(s.basePath, fileInfo.StoragePath)
+	destDir := filepath.Dir(destPath)
+
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return nil, fmt.Errorf("创建目录失败: %v", err)
+	}
+
+	fmt.Printf("保存文件到磁盘: %s -> %s\n", file.Filename, destPath)
+
+	if err := s.saveFileToDisk(file, destPath); err != nil {
+		return nil, err
+	}
+
+	hash, err := s.calculateFileHash(destPath)
+	if err != nil {
+		fmt.Printf("警告: 计算文件哈希失败 %s: %v\n", file.Filename, err)
+		hash = ""
+	}
+	fileInfo.Hash = hash
+
+	if err := s.db.Create(fileInfo).Error; err != nil {
+		// 如果数据库保存失败，删除已上传的物理文件
+		os.Remove(destPath)
+		return nil, fmt.Errorf("保存文件信息到数据库失败: %w", err)
+	}
+
+	fmt.Printf("文件成功保存: %s (ID: %s) 到文件系统和数据库\n", file.Filename, fileInfo.ID)
+	return fileInfo, nil
+}
+
+func (s *StorageService) SaveBatch(files []*multipart.FileHeader) ([]*models.FileInfo, []error) {
+	var results []*models.FileInfo
+	var errors []error
+
+	for _, file := range files {
+		fileInfo, err := s.Save(file)
+		if err != nil {
+			errMessage := fmt.Errorf("%s: %v", file.Filename, err)
+			errors = append(errors, errMessage)
+			fmt.Println(errMessage) // 记录每个错误
+			continue
+		}
+		results = append(results, fileInfo)
+	}
+	return results, errors
+}
+
+func (s *StorageService) ListFiles(fileType, keyword, sortBy string, page, limit int) ([]*models.FileInfo, int64, error) {
+	var files []*models.FileInfo
+	var total int64
+
+	query := s.db.Model(&models.FileInfo{})
+	// 由于移除了软删除，不需要 Unscoped
+
+	if fileType != "" && fileType != "all" {
+		if fileType == "word" {
+			query = query.Where("extension IN (?)", []string{"doc", "docx"})
+		} else {
+			query = query.Where("extension = ?", fileType)
+		}
+	}
+
+	if keyword != "" {
+		keyword = "%" + keyword + "%"
+		query = query.Where("original_name LIKE ?", keyword)
+	}
+
+	query.Count(&total)
+
+	if sortBy == "" {
+		sortBy = "created_at desc"
+	}
+	query = query.Order(sortBy)
+
+	offset := (page - 1) * limit
+	if limit <= 0 { // 防止limit为0或负数
+		limit = 10
+	}
+	err := query.Offset(offset).Limit(limit).Find(&files).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("从数据库获取文件列表失败: %w", err)
+	}
+	return files, total, nil
+}
+
+func (s *StorageService) GetFile(id string) (*models.FileInfo, error) {
+	var fileInfo models.FileInfo
+	// 由于移除了软删除，不需要 Unscoped
+	err := s.db.First(&fileInfo, "id = ?", id).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("数据库中未找到文件")
+		}
+		return nil, fmt.Errorf("从数据库获取文件失败: %w", err)
+	}
+
+	filePath := filepath.Join(s.basePath, fileInfo.StoragePath)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		// 如果物理文件丢失，也从数据库中删除元数据，确保数据一致性
+		// TODO: 考虑是否应该在用户每次请求时都尝试删除物理文件丢失的元数据，这可能效率低下。
+		// 更好的做法是定期进行文件系统与数据库的一致性检查。
+		s.db.Where("id = ?", id).Delete(&models.FileInfo{})
+		return nil, fmt.Errorf("磁盘上未找到文件，元数据已移除")
+	}
+
+	return &fileInfo, nil
+}
+
+func (s *StorageService) DeleteFile(id string) error {
+	var fileInfo models.FileInfo
+	// 首先查找文件信息，即使模型没有软删除，GORM的First方法也会尝试查询
+	err := s.db.First(&fileInfo, "id = ?", id).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("未找到要删除的文件")
+		}
+		return fmt.Errorf("在数据库中查找文件失败: %w", err)
+	}
+
+	// 删除物理文件
+	filePath := filepath.Join(s.basePath, fileInfo.StoragePath)
+	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+		// 如果文件不存在，os.Remove会返回PathError，我们只在真正删除失败时返回错误
+		return fmt.Errorf("删除物理文件失败: %v", err)
+	}
+
+	// 从数据库中物理删除文件信息
+	// 对于没有gorm.DeletedAt字段的模型，db.Delete()默认就是物理删除
+	result := s.db.Where("id = ?", id).Delete(&models.FileInfo{})
+	if result.Error != nil {
+		return fmt.Errorf("从数据库删除文件信息失败: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("尽管已初步检查，但在数据库中未找到要删除的文件")
+	}
+
+	fmt.Printf("文件成功删除: %s (ID: %s) 从文件系统和数据库\n", fileInfo.OriginalName, id)
+	return nil
+}
+
+func (s *StorageService) GetFilePath(fileInfo *models.FileInfo) string {
+	return filepath.Join(s.basePath, fileInfo.StoragePath)
+}
+
+func (s *StorageService) GetTotalFileSize() (int64, error) {
+	var totalSize int64
+	// SQL语句会根据模型是否包含DeletedAt字段自动添加 WHERE deleted_at IS NULL
+	// 现在我们的模型没有DeletedAt，所以它会查询所有记录
+	err := s.db.Model(&models.FileInfo{}).Select("sum(size)").Row().Scan(&totalSize)
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return 0, fmt.Errorf("获取文件总大小失败: %w", err)
+	}
+	return totalSize, nil
+}
+
+func (s *StorageService) GetTotalFileCount() (int64, error) {
+	var count int64
+	// SQL语句会根据模型是否包含DeletedAt字段自动添加 WHERE deleted_at IS NULL
+	// 现在我们的模型没有DeletedAt，所以它会查询所有记录
+	err := s.db.Model(&models.FileInfo{}).Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("获取文件总数失败: %w", err)
+	}
+	return count, nil
+}
+
+func (s *StorageService) RescanFiles() error {
+	return fmt.Errorf("重新扫描功能尚未实现")
+}
+
+func (s *StorageService) DeleteBatch(ids []string) ([]string, []error) {
+	var deletedIDs []string
+	var deletionErrors []error
+
+	for _, id := range ids {
+		err := s.DeleteFile(id) // 调用单个删除文件的方法
+		if err != nil {
+			deletionErrors = append(deletionErrors, fmt.Errorf("删除文件 %s 失败: %w", id, err))
+		} else {
+			deletedIDs = append(deletedIDs, id)
+		}
+	}
+	return deletedIDs, deletionErrors
+}
+
+func (s *StorageService) validateFile(file *multipart.FileHeader) error {
+	contentType := file.Header.Get("Content-Type")
+
+	// 优先根据Content-Type判断
+	validByContentType := false
+	for _, allowedType := range s.allowedTypes {
+		if contentType == allowedType {
+			validByContentType = true
+			break
+		}
+	}
+
+	// 如果Content-Type不匹配，则尝试根据文件扩展名判断
+	if !validByContentType {
+		ext := strings.ToLower(filepath.Ext(file.Filename))
+		validExts := []string{".pdf", ".doc", ".docx"}
+		validByExtension := false
+		for _, validExt := range validExts {
+			if ext == validExt {
+				validByExtension = true
+				break
+			}
+		}
+
+		if !validByExtension {
+			return fmt.Errorf("不支持的文件类型: %s (文件扩展名: %s，仅支持 PDF, DOC, DOCX)", contentType, ext)
+		}
+	}
+
+	if file.Size > s.maxFileSize {
+		return fmt.Errorf("文件过大: %d 字节 (最大 %d MB)", file.Size, s.maxFileSize/(1024*1024))
+	}
+
+	return nil
+}
+
+func (s *StorageService) createFileInfo(file *multipart.FileHeader) *models.FileInfo {
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	originalName := file.Filename
+
+	// 生成一个更独特的存储文件名，可以包含UUID的一部分和时间戳
+	storageName := fmt.Sprintf("%s_%d%s",
+		uuid.New().String()[:8], // UUID前8位
+		time.Now().UnixNano(),   // 纳秒级时间戳
+		ext)
+
+	now := time.Now()
+	// 按年/月组织文件目录
+	relativePath := filepath.Join(
+		fmt.Sprintf("%d", now.Year()),
+		fmt.Sprintf("%02d", now.Month()),
+		storageName,
+	)
+
+	// URL路径通常使用斜杠
+	urlPath := strings.ReplaceAll(relativePath, "\\", "/")
+
+	return &models.FileInfo{
+		ID:           uuid.New().String(), // 生成UUID作为主键
+		OriginalName: originalName,
+		StorageName:  storageName,
+		StoragePath:  relativePath,
+		Size:         file.Size,
+		MimeType:     file.Header.Get("Content-Type"),
+		Extension:    strings.TrimPrefix(ext, "."), // 移除点
+		URL:          s.baseURL + "/uploads/" + urlPath,
+	}
+}
+
+func (s *StorageService) saveFileToDisk(file *multipart.FileHeader, destPath string) error {
+	src, err := file.Open()
+	if err != nil {
+		return fmt.Errorf("打开源文件失败: %v", err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("创建目标文件失败: %v", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		// 如果复制失败，尝试删除部分写入的文件
+		os.Remove(destPath)
+		return fmt.Errorf("复制文件内容失败: %v", err)
+	}
+
+	return nil
+}
+
+func (s *StorageService) calculateFileHash(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hash := md5.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+```

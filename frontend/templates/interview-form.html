@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>面试管理</title>
+    <link rel="stylesheet" href="../static/css/all.min.css">
+    <link rel="stylesheet" href="../static/css/fonts.css">
+    <link rel="stylesheet" href="../static/css/index.css">
+    <link rel="stylesheet" href="../static/css/style.css">
+    <link rel="stylesheet" href="../static/css/interview-form.css">
+</head>
+<body>
+
+<div class="app-container">
+    <nav class="sidebar">
+        <div class="brand">
+            <div class="logo-icon">✨</div>
+            <div class="brand-text">Resume<span>AI</span></div>
+        </div>
+        <div class="nav-menu">
+            <div class="menu-label">工作台</div>
+            <a href="/index.html" class="nav-item">
+                <i class="fa-solid fa-layer-group"></i> 简历库
+            </a>
+            <a href="/interview-form.html" class="nav-item active">
+                <i class="fa-solid fa-calendar-alt"></i> 面试管理
+                <span class="active-indicator"></span>
+            </a>
+            <div class="menu-label" style="margin-top: 20px;">系统设置</div>
+            <a href="/company-positions.html" class="nav-item">
+                <i class="fa-solid fa-briefcase"></i> 岗位管理
+            </a>
+            <a href="/recruitment-sources.html" class="nav-item">
+                <i class="fa-solid fa-sitemap"></i> 招聘来源
+            </a>
+            <a href="/interviewers.html" class="nav-item">
+                <i class="fa-solid fa-user-tie"></i> 面试官管理
+            </a>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <header class="top-header">
+            <div class="page-title">
+                <h1>面试管理</h1>
+                <p>管理您的面试追踪记录 🚀</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary-pill" onclick="fetchInterviews()">
+                    <i class="fa-solid fa-rotate-right"></i> 刷新列表
+                </button>
+                <button class="btn btn-primary-pill" onclick="openCreateInterviewModal()">
+                    <i class="fa-solid fa-plus"></i> 新增面试
+                </button>
+            </div>
+        </header>
+
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon bg-indigo">📝</div>
+                <div class="stat-content">
+                    <span class="stat-label">总面试数</span>
+                    <h2 class="stat-value" id="stat-total-interviews">0</h2>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon bg-purple">🕒</div>
+                <div class="stat-content">
+                    <span class="stat-label">待定面试</span>
+                    <h2 class="stat-value" id="stat-pending-interviews">0</h2>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon bg-green">✅</div>
+                <div class="stat-content">
+                    <span class="stat-label">已通过面试</span>
+                    <h2 class="stat-value" id="stat-passed-interviews">0</h2>
+                </div>
+            </div>
+        </section>
+
+        <section class="data-section">
+            <div class="section-header">
+                <div class="filters">
+                    <div class="filter-tabs" id="filter-tabs">
+                        <button class="tab active" data-suggestion="">全部</button>
+                        <button class="tab" data-suggestion="通过">通过</button>
+                        <button class="tab" data-suggestion="待定">待定</button>
+                        <button class="tab" data-suggestion="淘汰">淘汰</button>
+                    </div>
+                    <div class="search-input">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="search-input" placeholder="搜索姓名/岗位/面试官...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-card">
+                <table class="modern-table">
+                    <thead>
+                    <tr>
+                        <th width="40">#</th>
+                        <th width="120">姓名 / 岗位</th>
+                        <th width="120">手机号 / 邮箱</th>
+                        <th width="100">招聘来源</th>
+                        <th width="80" class="text-right">轮次</th>
+                        <th width="140">面试时间</th>
+                        <th width="90">面试官</th>
+                        <th width="70">评分</th>
+                        <th width="70">建议</th>
+                        <th width="150">操作</th>
+                    </tr>
+                    </thead>
+                    <tbody id="interview-list-body">
+                    </tbody>
+                </table>
+                <div class="pagination-wrapper" id="pagination">
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<div class="modal-overlay" id="interview-form-modal">
+    <div class="modern-modal" style="width: 700px;">
+        <div class="modal-header">
+            <h3 id="form-modal-title">新增面试记录</h3>
+            <span class="modal-tag">New</span>
+        </div>
+        <form id="interview-form" class="interview-form-content">
+            <div class="form-grid">
+                <div class="form-group span-half">
+                    <label for="candidate-name">姓名 <span class="required">*</span></label>
+                    <input type="text" id="candidate-name" name="candidate_name" v-model="interviewForm.candidate_name" required>
+                </div>
+                <div class="form-group span-half">
+                    <label for="company-position-id">应聘岗位 <span class="required">*</span></label>
+                    <select id="company-position-id" name="company_position_id" v-model="interviewForm.company_position_id" required>
+                        <option value="">请选择岗位</option>
+                        <option v-for="position in allCompanyPositions" :value="position.id">{{ position.name }}</option>
+                    </select>
+                </div>
+                <div class="form-group span-half">
+                    <label for="phone-number">手机号 <span class="required">*</span></label>
+                    <input type="tel" id="phone-number" name="phone_number" v-model="interviewForm.phone_number" required>
+                </div>
+                <div class="form-group span-half">
+                    <label for="email">邮箱 <span class="required">*</span></label>
+                    <input type="email" id="email" name="email" v-model="interviewForm.email" required>
+                </div>
+
+                <div class="form-group span-full">
+                    <label>简历文件 <span class="required">*</span></label>
+                    <div class="input-with-button">
+                        <input type="hidden" id="resume-file-id" name="resume_file_id" v-model="interviewForm.resume_file_id" required>
+                        <input type="text" id="resume-file-display" class="flex-grow read-only-input" placeholder="点击选择简历文件" readonly @click="openFileSearchModal" v-model="interviewForm.resume_file_display">
+                        <label for="local-resume-input" class="btn btn-secondary-pill btn-sm" style="margin-left: -5px; height: 38px; line-height: 20px;">
+                            <i class="fa-solid fa-upload"></i> 本地上传
+                            <input type="file" id="local-resume-input" class="visually-hidden-file-input" @change="handleLocalResumeUpload">
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group span-full">
+                    <label for="recruitment-source-id">招聘来源 <span class="required">*</span></label>
+                    <select id="recruitment-source-id" name="recruitment_source_id" v-model="interviewForm.recruitment_source_id" required>
+                        <option value="">请选择招聘来源</option>
+                        <option v-for="source in allRecruitmentSources" :value="source.id">{{ source.name }}</option>
+                    </select>
+                </div>
+
+                <div class="form-group span-half">
+                    <label for="interview-round">面试轮次 <span class="required">*</span></label>
+                    <select id="interview-round" name="interview_round" v-model="interviewForm.interview_round" required>
+                        <option value="初试">初试</option>
+                        <option value="复试">复试</option>
+                        <option value="终面">终面</option>
+                    </select>
+                </div>
+                <div class="form-group span-half">
+                    <label for="interview-method">面试形式 <span class="required">*</span></label>
+                    <select id="interview-method" name="interview_method" v-model="interviewForm.interview_method" required>
+                        <option value="现场面试">现场面试</option>
+                        <option value="电话面试">电话面试</option>
+                        <option value="视频面试">视频面试</select>
+                </div>
+                <div class="form-group span-half">
+                    <label for="interview-time">面试时间 <span class="required">*</span></label>
+                    <el-date-picker
+                            v-model="interviewForm.interview_time"
+                            type="datetime"
+                            placeholder="选择日期时间"
+                            value-format="yyyy-MM-ddTHH:mm:ss"
+                            :editable="false"
+                            clearable
+                            style="width: 100%;"
+                            popper-class="interview-datetime-picker-popper"
+                            class="custom-el-date-picker"
+                            ref="interviewTimePicker"
+                    >
+                    </el-date-picker>
+                </div>
+                <div class="form-group span-half">
+                    <label for="interviewer-id">面试官 <span class="required">*</span></label>
+                    <select id="interviewer-id" name="interviewer_id" v-model="interviewForm.interviewer_id" required>
+                        <option value="">请选择面试官</option>
+                        <option v-for="interviewer in allInterviewers" :value="interviewer.id">{{ interviewer.name }} <span v-if="interviewer.department"> ({{ interviewer.department }})</span></option>
+                    </select>
+                </div>
+
+                <div class="form-group span-half">
+                    <label for="interview-rating">面试评分 (0-10分)</label>
+                    <input type="number" id="interview-rating" name="interview_rating" v-model.number="interviewForm.interview_rating" min="0" max="10">
+                </div>
+                <div class="form-group span-half">
+                    <label for="suggestion">本轮建议 <span class="required">*</span></label>
+                    <select id="suggestion" name="suggestion" v-model="interviewForm.suggestion" required>
+                        <option value="通过">通过</option>
+                        <option value="待定">待定</option>
+                        <option value="淘汰">淘汰</option>
+                    </select>
+                </div>
+
+                <div class="form-group span-full">
+                    <label for="comments">面试评价</label>
+                    <textarea id="comments" name="comments" v-model="interviewForm.comments" rows="3"></textarea>
+                </div>
+            </div>
+        </form>
+        <div class="modal-actions-row">
+            <button type="button" class="btn btn-secondary-pill" onclick="closeModal('interview-form-modal')">取消</button>
+            <button type="button" class="btn btn-primary-pill" @click="handleFormSubmit" id="submit-interview-btn">保存</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="file-search-modal">
+    <div class="modern-modal" style="width: 600px;">
+        <div class="modal-header">
+            <h3>选择简历文件</h3>
+            <div class="search-input" style="width: 250px;">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" id="file-search-input" placeholder="搜索简历文件名...">
+            </div>
+        </div>
+        <div class="modal-content-scrollable">
+            <div class="file-search-list" id="file-search-list">
+            </div>
+        </div>
+        <div class="modal-actions-row">
+            <button type="button" class="btn btn-secondary-pill" onclick="closeModal('file-search-modal')">关闭</button>
+            <button type="button" class="btn btn-primary-pill" onclick="selectResumeFile()">选择</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="detail-modal">
+    <div class="modern-modal" style="width: 600px;">
+        <div class="modal-header">
+            <h3>面试详情</h3>
+            <span class="modal-tag" id="detail-modal-round-tag"></span>
+        </div>
+        <div class="modal-content-grid" id="detail-content">
+        </div>
+        <div class="modal-actions-row">
+            <button class="btn btn-secondary-pill" onclick="closeModal('detail-modal')">关闭</button>
+            <button class="btn btn-primary-pill" onclick="closeDetailAndEdit(state.editInterviewId)">
+                <i class="fa-solid fa-edit"></i> 编辑
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="confirm-modal" style="display: none;">
+    <div class="confirm-card">
+        <div class="confirm-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <h3 id="confirm-title">确认删除?</h3>
+        <p id="confirm-msg">此操作不可恢复，请谨慎操作。</p>
+        <div class="confirm-actions">
+            <button class="btn btn-secondary-pill" id="btn-cancel-confirm">取消</button>
+            <button class="btn btn-danger-pill" id="btn-ok-confirm">确认删除</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="../static/js/vue.min.js"></script>
+<script src="../static/js/index.js"></script>
+<script src="../static/js/interview-form.js"></script>
+</body>
+</html>

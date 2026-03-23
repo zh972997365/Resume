@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>招聘来源</title>
+    <link rel="stylesheet" href="../static/css/all.min.css">
+    <link rel="stylesheet" href="../static/css/fonts.css">
+    <link rel="stylesheet" href="../static/css/index.css">
+    <link rel="stylesheet" href="../static/css/style.css">
+    <link rel="stylesheet" href="../static/css/interview-form.css">
+ </head>
+<body>
+
+<div class="app-container">
+    <nav class="sidebar">
+        <div class="brand">
+            <div class="logo-icon">✨</div>
+            <div class="brand-text">Resume<span>AI</span></div>
+        </div>
+        <div class="nav-menu">
+            <div class="menu-label">工作台</div>
+            <a href="/index.html" class="nav-item">
+                <i class="fa-solid fa-layer-group"></i> 简历库
+            </a>
+            <a href="/interview-form.html" class="nav-item">
+                <i class="fa-solid fa-calendar-alt"></i> 面试管理
+            </a>
+            <div class="menu-label" style="margin-top: 20px;">系统设置</div>
+            <a href="/company-positions.html" class="nav-item">
+                <i class="fa-solid fa-briefcase"></i> 岗位管理
+            </a>
+            <a href="/recruitment-sources.html" class="nav-item active">
+                <i class="fa-solid fa-sitemap"></i> 招聘来源
+                <span class="active-indicator"></span>
+            </a>
+            <a href="/interviewers.html" class="nav-item">
+                <i class="fa-solid fa-user-tie"></i> 面试官管理
+            </a>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <header class="top-header">
+            <div class="page-title">
+                <h1>招聘来源</h1>
+                <p>管理招聘渠道和来源信息 📡</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary-pill" onclick="fetchItems()">
+                    <i class="fa-solid fa-rotate-right"></i> 刷新列表
+                </button>
+                <button class="btn btn-primary-pill" onclick="openCreateItemModal()">
+                    <i class="fa-solid fa-plus"></i> 新增来源
+                </button>
+            </div>
+        </header>
+
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon bg-indigo">🔗</div>
+                <div class="stat-content">
+                    <span class="stat-label">总来源数</span>
+                    <h2 class="stat-value" id="stat-total-items">0</h2>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon bg-purple">✨</div>
+                <div class="stat-content">
+                    <span class="stat-label">活跃来源</span>
+                    <h2 class="stat-value" id="stat-active-items">0</h2>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon bg-green">🟢</div>
+                <div class="stat-content">
+                    <span class="stat-label">今日新增</span>
+                    <h2 class="stat-value" id="stat-today-new">0</h2>
+                </div>
+            </div>
+        </section>
+
+        <section class="data-section">
+            <div class="section-header">
+                <div class="filters">
+                    <div class="search-input">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="search-input" placeholder="搜索招聘来源...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-card">
+                <table class="modern-table">
+                    <thead>
+                    <tr>
+                        <th width="40">#</th>
+                        <th>来源名称</th>
+                        <th width="180">创建时间</th>
+                        <th width="150">操作</th>
+                    </tr>
+                    </thead>
+                    <tbody id="list-body">
+                    </tbody>
+                </table>
+                <div class="pagination-wrapper" id="pagination">
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<div class="modal-overlay" id="form-modal">
+    <div class="modern-modal" style="width: 500px;">
+        <div class="modal-header">
+            <h3 id="form-modal-title">新增招聘来源</h3>
+            <span class="modal-tag">New</span>
+        </div>
+        <form id="item-form" class="interview-form-content">
+            <div class="form-grid">
+                <div class="form-group span-full">
+                    <label for="item-name">来源名称 <span class="required">*</span></label>
+                    <input type="text" id="item-name" name="name" v-model="itemForm.name" required>
+                </div>
+            </div>
+        </form>
+        <div class="modal-actions-row">
+            <button type="button" class="btn btn-secondary-pill" onclick="closeModal('form-modal')">取消</button>
+            <button type="button" class="btn btn-primary-pill" @click="handleFormSubmit" id="submit-item-btn">保存</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="confirm-modal" style="display: none;">
+    <div class="confirm-card">
+        <div class="confirm-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <h3 id="confirm-title">确认删除?</h3>
+        <p id="confirm-msg">此操作不可恢复，请谨慎操作。</p>
+        <div class="confirm-actions">
+            <button class="btn btn-secondary-pill" id="btn-cancel-confirm">取消</button>
+            <button class="btn btn-danger-pill" id="btn-ok-confirm">确认删除</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="../static/js/vue.min.js"></script>
+<script src="../static/js/index.js"></script>
+<script src="../static/js/recruitment-sources.js"></script>
+</body>
+</html>

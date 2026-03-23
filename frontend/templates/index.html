@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简历管理系统</title>
+    <link rel="stylesheet" href="../static/css/all.min.css">
+    <link rel="stylesheet" href="../static/css/fonts.css">
+    <link rel="stylesheet" href="../static/css/style.css">
+</head>
+<body>
+
+<div class="app-container">
+    <nav class="sidebar">
+        <div class="brand">
+            <div class="logo-icon">✨</div>
+            <div class="brand-text">Resume<span>AI</span></div>
+        </div>
+        <div class="nav-menu">
+            <div class="menu-label">工作台</div>
+            <a href="#" class="nav-item active">
+                <i class="fa-solid fa-layer-group"></i> 简历库
+                <span class="active-indicator"></span>
+            </a>
+            <a href="/interview-form.html" class="nav-item">
+                <i class="fa-solid fa-calendar-alt"></i> 面试管理
+            </a>
+            <div class="menu-label" style="margin-top: 20px;">系统设置</div>
+            <a href="/company-positions.html" class="nav-item">
+                <i class="fa-solid fa-briefcase"></i> 岗位管理
+            </a>
+            <a href="/recruitment-sources.html" class="nav-item">
+                <i class="fa-solid fa-sitemap"></i> 招聘来源
+            </a>
+            <a href="/interviewers.html" class="nav-item">
+                <i class="fa-solid fa-user-tie"></i> 面试官管理
+            </a>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <header class="top-header">
+            <div class="page-title">
+                <h1>简历库</h1>
+                <p>管理您的简历数据资产 🟢</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary-pill" onclick="fetchFiles()">
+                    <i class="fa-solid fa-rotate-right"></i> 刷新列表
+                </button>
+                <button class="btn btn-primary-pill" onclick="document.getElementById('file-input').click()">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> 上传文件
+                </button>
+            </div>
+        </header>
+
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon bg-indigo">📂</div>
+                <div class="stat-content">
+                    <span class="stat-label">总文件数</span>
+                    <h2 class="stat-value" id="stat-total">0</h2>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon bg-purple">💾</div>
+                <div class="stat-content">
+                    <span class="stat-label">存储占用</span>
+                    <h2 class="stat-value" id="stat-size">0 MB</h2>
+                </div>
+            </div>
+            <div class="stat-card upload-trigger" id="drop-zone">
+                <div class="upload-content">
+                    <div class="upload-icon">☁️</div>
+                    <h3>拖拽上传</h3>
+                    <input type="file" id="file-input" multiple class="visually-hidden-file-input">
+                </div>
+                <div class="upload-progress-mask" id="upload-mask">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="data-section">
+            <div class="section-header">
+                <div class="filters">
+                    <div class="filter-tabs" id="filter-tabs">
+                        <button class="tab active" data-type="all">全部</button>
+                        <button class="tab" data-type="pdf"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                        <button class="tab" data-type="word"><i class="fa-solid fa-file-word"></i> Word</button>
+                    </div>
+                    <div class="search-input">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="search-input" placeholder="搜索文件...">
+                    </div>
+                </div>
+                <div class="batch-action-bar" id="batch-bar">
+                    <span class="selected-text">已选中 <b id="selected-count">0</b> 项</span>
+                    <button class="btn-text-danger" onclick="confirmBatchDelete()">
+                        删除选中
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-card">
+                <table class="modern-table">
+                    <thead>
+                    <tr>
+                        <th width="40" class="text-center">
+                            <input type="checkbox" id="select-all" class="custom-checkbox">
+                        </th>
+                        <th>文件名称</th>
+                        <th width="100">格式</th>
+                        <th width="120">大小</th>
+                        <th width="180">上传时间</th>
+                        <th width="150" class="text-right">操作</th>
+                    </tr>
+                    </thead>
+                    <tbody id="file-list-body">
+                    </tbody>
+                </table>
+                <div class="pagination-wrapper" id="pagination">
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<div class="modal-overlay" id="detail-modal">
+    <div class="modern-modal">
+        <div class="modal-header">
+            <h3>文件详情</h3>
+            <span class="modal-tag" id="modal-tag-ext">PDF</span>
+        </div>
+        <div class="modal-content-grid" id="detail-content">
+        </div>
+        <div class="modal-actions-row">
+            <button class="btn btn-secondary-pill" onclick="closeModal('detail-modal')">关闭</button>
+            <button class="btn btn-outline-pill" onclick="viewFilePreview()" id="modal-access-btn">
+                <i class="fa-solid fa-external-link-alt"></i> 访问文件
+            </button>
+            <button class="btn btn-primary-pill" id="modal-download-btn">
+                <i class="fa-solid fa-download"></i> 下载
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="confirm-modal" style="display: none;">
+    <div class="confirm-card">
+        <div class="confirm-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <h3 id="confirm-title">确认删除?</h3>
+        <p id="confirm-msg">此操作不可恢复，请谨慎操作。</p>
+        <div class="confirm-actions">
+            <button class="btn btn-secondary-pill" id="btn-cancel-confirm">取消</button>
+            <button class="btn btn-danger-pill" id="btn-ok-confirm">确认删除</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../static/js/main.js"></script>
+</body>
+</html>
